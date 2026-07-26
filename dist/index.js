@@ -2,7 +2,8 @@ import { defineChannelPluginEntry } from "openclaw/plugin-sdk/channel-core";
 import {
   superchatPlugin,
   resolveAccount,
-  isAllowedSender
+  isAllowedSender,
+  clientFor
 } from "./src/channel.js";
 import { buildSuperchatTools } from "./src/tools.js";
 async function readBody(req) {
@@ -25,61 +26,136 @@ var index_default = defineChannelPluginEntry({
   description: "Superchat channel plugin: all message types incl. WhatsApp templates, locked to a single contact",
   plugin: superchatPlugin,
   registerFull(api) {
-    for (const tool of buildSuperchatTools(() => resolveAccount(api.config))) {
-      api.registerTool(tool);
+    try {
+      for (const tool of buildSuperchatTools(() => resolveAccount(api.config))) {
+        api.registerTool(tool);
+      }
+    } catch (err) {
+      console.warn(`superchat: tool registration unavailable: ${String(err)}`);
     }
     api.registerHttpRoute({
       path: "/superchat/webhook",
       auth: "plugin",
       handler: async (req, res) => {
-        const account = resolveAccount(api.config);
-        if (account.webhookToken) {
-          const url = new URL(req.url ?? "", "http://localhost");
-          if (url.searchParams.get("token") !== account.webhookToken) {
-            res.statusCode = 401;
-            res.end("unauthorized");
+        try {
+          const account = resolveAccount(api.config);
+          if (account.webhookToken) {
+            const url = new URL(req.url ?? "", "http://localhost");
+            if (url.searchParams.get("token") !== account.webhookToken) {
+              res.statusCode = 401;
+              res.end("unauthorized");
+              return true;
+            }
+          }
+          let event;
+          try {
+            event = JSON.parse(await readBody(req));
+          } catch {
+            res.statusCode = 400;
+            res.end("bad payload");
             return true;
           }
-        }
-        let event;
-        try {
-          event = JSON.parse(await readBody(req));
-        } catch {
-          res.statusCode = 400;
-          res.end("bad payload");
-          return true;
-        }
-        const msg = event.message;
-        if (event.event !== "message_inbound" || !msg || msg.direction !== "inbound") {
-          res.statusCode = 200;
-          res.end("ignored");
-          return true;
-        }
-        if (!isAllowedSender(account, msg.from?.id, msg.from?.identifier)) {
-          res.statusCode = 200;
-          res.end("ignored (contact not allowed)");
-          return true;
-        }
-        await api.runtime.channel.inbound.dispatch({
-          channel: "superchat",
-          accountId: "default",
-          envelope: {
-            raw: event,
-            conversationId: msg.conversation_id,
-            senderId: msg.from?.id ?? account.contactId,
-            timestamp: Date.parse(msg.created_at) || Date.now(),
-            text: describeInbound(msg),
-            messageId: msg.id,
-            replyToId: msg.in_reply_to ?? void 0,
-            // Which Superchat channel the message arrived on — the agent can
-            // pass this as channel_id to superchat_send_message to reply on
-            // the same channel.
-            meta: { superchatChannelId: msg.to?.channel_id }
+          const msg = event.message;
+          if (event.event !== "message_inbound" || !msg || msg.direction !== "inbound") {
+            res.statusCode = 200;
+            res.end("ignored");
+            return true;
           }
-        });
-        res.statusCode = 200;
-        res.end("ok");
-        return true;
+          if (!isAllowedSender(account, msg.from?.id, msg.from?.identifier)) {
+            res.statusCode = 200;
+            res.end("ignored (contact not allowed)");
+            return true;
+          }
+          res.statusCode = 200;
+          res.end("ok");
+          const rt = api.runtime;
+          const cfg = api.config;
+          const text = describeInbound(msg);
+          const senderId = msg.from?.id ?? account.contactId;
+          const senderName = msg.from?.identifier ?? senderId;
+          const replyChannelId = msg.to?.channel_id ?? account.channelId;
+          const timestamp = Date.parse(msg.created_at) || Date.now();
+          const route = rt.channel.routing.resolveAgentRoute({
+            cfg,
+            channel: "superchat",
+            accountId: "default",
+            peer: { kind: "direct", id: account.contactId }
+          });
+          const storePath = rt.channel.session.resolveStorePath(
+            cfg.session?.store,
+            { agentId: route.agentId }
+          );
+          const envelopeOptions = rt.channel.reply.resolveEnvelopeFormatOptions(cfg);
+          const previousTimestamp = rt.channel.session.readSessionUpdatedAt({
+            storePath,
+            sessionKey: route.sessionKey
+          });
+          const body = rt.channel.reply.formatInboundEnvelope({
+            channel: "Superchat",
+            from: `${senderName} (${senderId})`,
+            timestamp,
+            body: text,
+            chatType: "direct",
+            sender: { name: senderName, id: senderId },
+            previousTimestamp,
+            envelope: envelopeOptions
+          });
+          const ctx = rt.channel.reply.finalizeInboundContext({
+            Body: body,
+            RawBody: text,
+            CommandBody: text,
+            From: account.contactId,
+            To: account.contactId,
+            SessionKey: route.sessionKey,
+            AccountId: "default",
+            ChatType: "direct",
+            ConversationLabel: `Superchat ${senderName}`,
+            SenderName: senderName,
+            SenderId: senderId,
+            Provider: "superchat",
+            Surface: "superchat",
+            MessageSid: msg.id,
+            Timestamp: timestamp,
+            CommandAuthorized: true,
+            OriginatingChannel: "superchat",
+            OriginatingTo: account.contactId
+          });
+          await rt.channel.session.recordInboundSession({
+            storePath,
+            sessionKey: ctx.SessionKey || route.sessionKey,
+            ctx,
+            onRecordError: (err) => {
+              console.error(
+                `superchat: failed to record inbound session: ${String(err)}`
+              );
+            }
+          });
+          const client = clientFor(account);
+          await rt.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
+            ctx,
+            cfg,
+            dispatcherOptions: {
+              responsePrefix: "",
+              deliver: async (payload) => {
+                if (!payload?.text) return;
+                await client.sendText({
+                  channelId: replyChannelId,
+                  identifier: account.contactIdentifier,
+                  text: payload.text,
+                  senderName: account.senderName
+                });
+              }
+            }
+          });
+          return true;
+        } catch (err) {
+          console.error(`superchat webhook error: ${String(err)}`);
+          if (!res.headersSent && !res.writableEnded) {
+            res.statusCode = 500;
+            res.end(`superchat: ${String(err).slice(0, 300)}`);
+          }
+          return true;
+        }
       }
     });
   }
