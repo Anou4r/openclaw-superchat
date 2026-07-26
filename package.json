@@ -4,7 +4,7 @@
   "description": "Superchat channel plugin for OpenClaw (single-contact mode)",
   "type": "module",
   "scripts": {
-    "build": "esbuild index.ts setup-entry.ts src/channel.ts src/client.ts src/tools.ts --outdir=dist --outbase=. --format=esm --platform=node"
+    "build": "esbuild index.ts setup-entry.ts src/channel.ts src/client.ts src/tools.ts src/onboarding.ts --outdir=dist --outbase=. --format=esm --platform=node"
   },
   "openclaw": {
     "extensions": ["./index.ts"],

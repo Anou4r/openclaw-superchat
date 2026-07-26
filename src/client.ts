@@ -272,6 +272,23 @@ export class SuperchatClient {
     return this.request("GET", `/contacts/${encodeURIComponent(contactId)}`);
   }
 
+  /** Search contacts by a phone or email handle (used by the setup wizard). */
+  searchContactsByHandle(field: "phone" | "mail", value: string): Promise<any> {
+    return this.request("POST", "/contacts/search", {
+      query: {
+        value: [
+          {
+            operator: "eq",
+            field,
+            type: field,
+            value,
+            column: field === "mail" ? "mail_mail_address" : "phone_phone_number",
+          },
+        ],
+      },
+    });
+  }
+
   /** Set custom attribute values on a contact: [{ id: "cat_...", value }] */
   setContactAttributes(
     contactId: string,

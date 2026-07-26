@@ -112,6 +112,22 @@ class SuperchatClient {
   getContact(contactId) {
     return this.request("GET", `/contacts/${encodeURIComponent(contactId)}`);
   }
+  /** Search contacts by a phone or email handle (used by the setup wizard). */
+  searchContactsByHandle(field, value) {
+    return this.request("POST", "/contacts/search", {
+      query: {
+        value: [
+          {
+            operator: "eq",
+            field,
+            type: field,
+            value,
+            column: field === "mail" ? "mail_mail_address" : "phone_phone_number"
+          }
+        ]
+      }
+    });
+  }
   /** Set custom attribute values on a contact: [{ id: "cat_...", value }] */
   setContactAttributes(contactId, attributes) {
     return this.request("PATCH", `/contacts/${encodeURIComponent(contactId)}`, {

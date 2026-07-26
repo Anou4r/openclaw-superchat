@@ -3,6 +3,7 @@ import {
   createChannelPluginBase
 } from "openclaw/plugin-sdk/channel-core";
 import { SuperchatClient } from "./client.js";
+import { superchatSetupWizard } from "./onboarding.js";
 function section(cfg) {
   return cfg.channels?.["superchat"];
 }
@@ -121,6 +122,7 @@ const superchatPlugin = createChatChannelPlugin({
     }
   }
 });
+superchatPlugin.setupWizard = superchatSetupWizard;
 export {
   assertAllowedTarget,
   clientFor,

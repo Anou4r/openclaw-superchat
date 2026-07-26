@@ -4,6 +4,7 @@ import {
 } from "openclaw/plugin-sdk/channel-core";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/channel-core";
 import { SuperchatClient } from "./client.js";
+import { superchatSetupWizard } from "./onboarding.js";
 
 export type ResolvedSuperchatAccount = {
   accountId: string | null;
@@ -168,3 +169,6 @@ export const superchatPlugin = createChatChannelPlugin<ResolvedSuperchatAccount>
     },
   },
 });
+
+// Interactive setup screen for `openclaw channels add --channel superchat`.
+(superchatPlugin as any).setupWizard = superchatSetupWizard;
