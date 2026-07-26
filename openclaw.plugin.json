@@ -12,9 +12,17 @@
     "superchat": {
       "schema": {
         "type": "object",
-        "additionalProperties": false,
-        "required": ["apiKey", "channelId", "contactId", "contactIdentifier"],
+        "additionalProperties": true,
         "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether the channel is enabled."
+          },
+          "allowFrom": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Managed by OpenClaw DM security; the plugin locks to contactId regardless."
+          },
           "apiKey": {
             "type": "string",
             "description": "Superchat API key (Settings > API in the Superchat web app). Sent as X-API-KEY header."
