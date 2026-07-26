@@ -274,10 +274,24 @@ export class SuperchatClient {
 
   /** Search contacts by a phone or email handle (used by the setup wizard). */
   searchContactsByHandle(field: "phone" | "mail", value: string): Promise<any> {
-    return this.request("POST", "/contacts/search", {
+    return this.request("POST", "/contacts/search?limit=50", {
       query: {
-        value: [{ operator: "eq", field, type: field, value }],
+        value: [{ field, operator: "=", value }],
       },
+    });
+  }
+
+  /** Create a contact with a single phone/mail handle. */
+  createContact(params: {
+    field: "phone" | "mail";
+    value: string;
+    firstName?: string;
+    lastName?: string;
+  }): Promise<any> {
+    return this.request("POST", "/contacts", {
+      ...(params.firstName ? { first_name: params.firstName } : {}),
+      ...(params.lastName ? { last_name: params.lastName } : {}),
+      handles: [{ id: null, type: params.field, value: params.value }],
     });
   }
 

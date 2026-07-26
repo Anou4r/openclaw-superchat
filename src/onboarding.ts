@@ -150,6 +150,17 @@ type FoundContact = {
   handles?: { type: string; value: string }[];
 };
 
+/** Normalize a phone number to E.164: strip formatting, map 00-prefix to +. */
+export function normalizePhoneE164(raw: string): string | undefined {
+  let s = String(raw ?? "").replace(/[\s\-()./]/g, "");
+  if (s.startsWith("00")) s = `+${s.slice(2)}`;
+  return /^\+[1-9]\d{6,14}$/.test(s) ? s : undefined;
+}
+
+function isValidEmail(raw: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(raw ?? "").trim());
+}
+
 function normalizeHandle(value: string): string {
   return value.replace(/[^a-z0-9@.]/gi, "").toLowerCase();
 }
@@ -229,16 +240,27 @@ async function promptContact(
     : "manual";
 
   if (method === "phone" || method === "mail") {
-    const value = String(
+    const rawValue = String(
       await prompter.text({
         message:
           method === "phone"
             ? "Contact phone number (E.164, e.g. +491701234567)"
             : "Contact email address",
         placeholder: method === "phone" ? "+491701234567" : "name@example.com",
-        validate: required,
+        validate: (v: string) => {
+          if (!String(v ?? "").trim()) return "Required";
+          if (method === "phone" && !normalizePhoneE164(v)) {
+            return "Not a valid E.164 number (start with +country code, e.g. +49...)";
+          }
+          if (method === "mail" && !isValidEmail(v)) {
+            return "Not a valid email address";
+          }
+          return undefined;
+        },
       }),
     ).trim();
+    const value =
+      method === "phone" ? normalizePhoneE164(rawValue)! : rawValue;
     try {
       const contacts = await findContacts(
         client,
@@ -247,8 +269,39 @@ async function promptContact(
         (msg) => prompter.note(msg, "Contact search"),
       );
       if (contacts.length === 0) {
+        const create = await prompter.confirm({
+          message: `No contact found for ${value}. Create it in Superchat now?`,
+          initialValue: true,
+        });
+        if (create) {
+          const firstName = String(
+            await prompter.text({
+              message: "First name (optional)",
+              placeholder: "Max",
+              initialValue: "",
+            }),
+          ).trim();
+          const lastName = String(
+            await prompter.text({
+              message: "Last name (optional)",
+              placeholder: "Mustermann",
+              initialValue: "",
+            }),
+          ).trim();
+          const created = (await client.createContact({
+            field: method as "phone" | "mail",
+            value,
+            firstName: firstName || undefined,
+            lastName: lastName || undefined,
+          })) as { id: string };
+          await prompter.note(
+            `Contact created: ${created.id} (${value})`,
+            "Contact created",
+          );
+          return { contactId: created.id, contactIdentifier: value };
+        }
         await prompter.note(
-          `No contact found for ${value}. Falling back to manual entry.`,
+          "Falling back to manual entry.",
           "Contact search",
         );
       } else {
