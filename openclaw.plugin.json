@@ -1,0 +1,63 @@
+{
+  "id": "superchat",
+  "channels": ["superchat"],
+  "name": "Superchat",
+  "description": "Superchat channel plugin for OpenClaw. Sends and receives messages through the Superchat Public API, restricted to a single allowed contact.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  },
+  "channelConfigs": {
+    "superchat": {
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["apiKey", "channelId", "contactId", "contactIdentifier"],
+        "properties": {
+          "apiKey": {
+            "type": "string",
+            "description": "Superchat API key (Settings > API in the Superchat web app). Sent as X-API-KEY header."
+          },
+          "channelId": {
+            "type": "string",
+            "description": "Default Superchat channel id for outbound sends (mc_...). Inbound is accepted from ALL channels. Find ids via GET /v1.0/channels."
+          },
+          "whatsAppBusinessAccountId": {
+            "type": "string",
+            "description": "Optional WhatsApp Business Account id used as default when creating WhatsApp templates."
+          },
+          "contactId": {
+            "type": "string",
+            "description": "The ONLY Superchat contact this channel is allowed to talk to (ct_...). Inbound messages from anyone else are dropped."
+          },
+          "contactIdentifier": {
+            "type": "string",
+            "description": "Identifier of that contact used for outbound sends: phone in E.164 (+49...) or email, matching the channel type."
+          },
+          "senderName": {
+            "type": "string",
+            "description": "Optional display name used as the 'from.name' on outbound messages."
+          },
+          "webhookToken": {
+            "type": "string",
+            "description": "Optional shared secret. If set, webhook deliveries must call /superchat/webhook?token=<value> or they are rejected."
+          },
+          "dmSecurity": {
+            "type": "string",
+            "description": "DM policy override. Defaults to 'allowlist' (only the configured contact)."
+          }
+        }
+      },
+      "uiHints": {
+        "apiKey": { "label": "Superchat API key", "sensitive": true },
+        "channelId": { "label": "Default outbound channel id (mc_...)" },
+        "whatsAppBusinessAccountId": { "label": "WhatsApp Business Account id" },
+        "contactId": { "label": "Allowed contact id (ct_...)" },
+        "contactIdentifier": { "label": "Allowed contact phone/email" },
+        "senderName": { "label": "Sender display name" },
+        "webhookToken": { "label": "Webhook token", "sensitive": true }
+      }
+    }
+  }
+}

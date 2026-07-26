@@ -1,0 +1,15 @@
+{
+  "name": "openclaw-superchat",
+  "version": "0.1.0",
+  "description": "Superchat channel plugin for OpenClaw (single-contact mode)",
+  "type": "module",
+  "openclaw": {
+    "extensions": ["./index.ts"],
+    "setupEntry": "./setup-entry.ts",
+    "channel": {
+      "id": "superchat",
+      "label": "Superchat",
+      "blurb": "Connect OpenClaw to a Superchat inbox (WhatsApp, SMS, email) via the Superchat Public API."
+    }
+  }
+}
