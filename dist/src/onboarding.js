@@ -90,6 +90,36 @@ async function promptChannelId(prompter, client, current) {
     };
   }
 }
+function normalizeHandle(value) {
+  return value.replace(/[^a-z0-9@.]/gi, "").toLowerCase();
+}
+function handleMatches(handleValue, query) {
+  const a = normalizeHandle(handleValue);
+  const b = normalizeHandle(query);
+  if (!a || !b) return false;
+  return a === b || a.endsWith(b) || b.endsWith(a);
+}
+async function findContacts(client, field, value, onNote) {
+  try {
+    const res = await client.searchContactsByHandle(field, value);
+    if ((res.results ?? []).length > 0) return res.results;
+  } catch {
+    await onNote("Search API rejected the query \u2014 scanning the contact list instead...");
+  }
+  const matches = [];
+  let after;
+  for (let page = 0; page < 20; page++) {
+    const res = await client.listContacts(after);
+    for (const c of res.results ?? []) {
+      if ((c.handles ?? []).some((h) => handleMatches(h.value, value))) {
+        matches.push(c);
+      }
+    }
+    after = res.pagination?.next_cursor ?? void 0;
+    if (!after || matches.length >= 10) break;
+  }
+  return matches;
+}
 async function promptContact(prompter, client, current, apiKeyValid) {
   await prompter.note(
     [
@@ -117,11 +147,12 @@ async function promptContact(prompter, client, current, apiKeyValid) {
       })
     ).trim();
     try {
-      const res = await client.searchContactsByHandle(
+      const contacts = await findContacts(
+        client,
         method,
-        value
+        value,
+        (msg) => prompter.note(msg, "Contact search")
       );
-      const contacts = res.results ?? [];
       if (contacts.length === 0) {
         await prompter.note(
           `No contact found for ${value}. Falling back to manual entry.`,

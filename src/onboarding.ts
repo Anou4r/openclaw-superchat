@@ -143,6 +143,64 @@ async function promptChannelId(
   }
 }
 
+type FoundContact = {
+  id: string;
+  first_name?: string;
+  last_name?: string;
+  handles?: { type: string; value: string }[];
+};
+
+function normalizeHandle(value: string): string {
+  return value.replace(/[^a-z0-9@.]/gi, "").toLowerCase();
+}
+
+function handleMatches(handleValue: string, query: string): boolean {
+  const a = normalizeHandle(handleValue);
+  const b = normalizeHandle(query);
+  if (!a || !b) return false;
+  // Phones come in +49 / 0049 / local formats — compare loosely.
+  return a === b || a.endsWith(b) || b.endsWith(a);
+}
+
+/**
+ * Find contacts by handle. Tries POST /contacts/search first; if Superchat
+ * rejects the query (its search DSL is only partially documented), falls
+ * back to scanning GET /contacts pages and matching handles client-side.
+ */
+async function findContacts(
+  client: SuperchatClient,
+  field: "phone" | "mail",
+  value: string,
+  onNote: (msg: string) => Promise<void>,
+): Promise<FoundContact[]> {
+  try {
+    const res = (await client.searchContactsByHandle(field, value)) as {
+      results?: FoundContact[];
+    };
+    if ((res.results ?? []).length > 0) return res.results!;
+  } catch {
+    await onNote("Search API rejected the query — scanning the contact list instead...");
+  }
+
+  // Fallback: page through contacts and match locally (max 20 pages = 2000).
+  const matches: FoundContact[] = [];
+  let after: string | undefined;
+  for (let page = 0; page < 20; page++) {
+    const res = (await client.listContacts(after)) as {
+      results?: FoundContact[];
+      pagination?: { next_cursor?: string | null };
+    };
+    for (const c of res.results ?? []) {
+      if ((c.handles ?? []).some((h) => handleMatches(h.value, value))) {
+        matches.push(c);
+      }
+    }
+    after = res.pagination?.next_cursor ?? undefined;
+    if (!after || matches.length >= 10) break;
+  }
+  return matches;
+}
+
 async function promptContact(
   prompter: WizardPrompter,
   client: SuperchatClient,
@@ -182,18 +240,12 @@ async function promptContact(
       }),
     ).trim();
     try {
-      const res = (await client.searchContactsByHandle(
+      const contacts = await findContacts(
+        client,
         method as "phone" | "mail",
         value,
-      )) as {
-        results?: {
-          id: string;
-          first_name?: string;
-          last_name?: string;
-          handles?: { type: string; value: string }[];
-        }[];
-      };
-      const contacts = res.results ?? [];
+        (msg) => prompter.note(msg, "Contact search"),
+      );
       if (contacts.length === 0) {
         await prompter.note(
           `No contact found for ${value}. Falling back to manual entry.`,

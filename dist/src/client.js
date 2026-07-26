@@ -116,17 +116,15 @@ class SuperchatClient {
   searchContactsByHandle(field, value) {
     return this.request("POST", "/contacts/search", {
       query: {
-        value: [
-          {
-            operator: "eq",
-            field,
-            type: field,
-            value,
-            column: field === "mail" ? "mail_mail_address" : "phone_phone_number"
-          }
-        ]
+        value: [{ operator: "eq", field, type: field, value }]
       }
     });
+  }
+  /** List contacts, one page (cursor-based). Used as search fallback. */
+  listContacts(after, limit = 100) {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (after) params.set("after", after);
+    return this.request("GET", `/contacts?${params.toString()}`);
   }
   /** Set custom attribute values on a contact: [{ id: "cat_...", value }] */
   setContactAttributes(contactId, attributes) {

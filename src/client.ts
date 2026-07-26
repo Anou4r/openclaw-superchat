@@ -276,17 +276,16 @@ export class SuperchatClient {
   searchContactsByHandle(field: "phone" | "mail", value: string): Promise<any> {
     return this.request("POST", "/contacts/search", {
       query: {
-        value: [
-          {
-            operator: "eq",
-            field,
-            type: field,
-            value,
-            column: field === "mail" ? "mail_mail_address" : "phone_phone_number",
-          },
-        ],
+        value: [{ operator: "eq", field, type: field, value }],
       },
     });
+  }
+
+  /** List contacts, one page (cursor-based). Used as search fallback. */
+  listContacts(after?: string, limit = 100): Promise<any> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (after) params.set("after", after);
+    return this.request("GET", `/contacts?${params.toString()}`);
   }
 
   /** Set custom attribute values on a contact: [{ id: "cat_...", value }] */
