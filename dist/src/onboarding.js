@@ -215,6 +215,17 @@ async function promptContact(prompter, client, current, apiKeyValid) {
   ).trim();
   return { contactId, contactIdentifier };
 }
+function extractWabaId(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return void 0;
+  const prefixed = s.match(/waba_[A-Za-z0-9]+/);
+  if (prefixed) return prefixed[0];
+  const labeled = s.match(/waba[\s_-]*id\s*[:=]?\s*(\d{6,})/i);
+  if (labeled) return labeled[1];
+  const numbers = s.match(/\d{6,}/g) ?? [];
+  if (numbers.length === 1) return numbers[0];
+  return void 0;
+}
 async function promptOptionals(prompter, current) {
   const senderName = String(
     await prompter.text({
@@ -229,14 +240,15 @@ async function promptOptionals(prompter, current) {
   });
   let whatsAppBusinessAccountId = current.whatsAppBusinessAccountId;
   if (wantsWaba) {
-    whatsAppBusinessAccountId = String(
+    const raw = String(
       await prompter.text({
-        message: "WhatsApp Business Account id",
-        placeholder: "waba_XXXX",
+        message: 'WhatsApp Business Account id (paste is fine \u2014 e.g. "WABA ID: 465726..., Business ID: 394530...")',
+        placeholder: "WABA ID: 4657... or waba_XXXX or bare digits",
         initialValue: current.whatsAppBusinessAccountId ?? void 0,
-        validate: required
+        validate: (value) => extractWabaId(value) ? void 0 : "No WABA id found in the input"
       })
-    ).trim();
+    );
+    whatsAppBusinessAccountId = extractWabaId(raw);
   }
   return {
     ...senderName ? { senderName } : {},
@@ -333,5 +345,6 @@ const superchatSetupWizard = {
   }
 };
 export {
+  extractWabaId,
   superchatSetupWizard
 };

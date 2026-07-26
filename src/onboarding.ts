@@ -314,6 +314,26 @@ async function promptContact(
   return { contactId, contactIdentifier };
 }
 
+/**
+ * Extract the WhatsApp Business Account id from messy pasted input.
+ * Accepts: "WABA ID: 465726029962969, Business ID: 394530232597033",
+ * "waba_1aBcD...", or bare digits. The Business ID is deliberately ignored.
+ */
+export function extractWabaId(raw: string): string | undefined {
+  const s = String(raw ?? "").trim();
+  if (!s) return undefined;
+  // Superchat-internal id form
+  const prefixed = s.match(/waba_[A-Za-z0-9]+/);
+  if (prefixed) return prefixed[0];
+  // "WABA ID: <digits>" — labeled value wins over other numbers in the paste
+  const labeled = s.match(/waba[\s_-]*id\s*[:=]?\s*(\d{6,})/i);
+  if (labeled) return labeled[1];
+  // Bare digits (only if unambiguous — exactly one long number in the input)
+  const numbers = s.match(/\d{6,}/g) ?? [];
+  if (numbers.length === 1) return numbers[0];
+  return undefined;
+}
+
 async function promptOptionals(
   prompter: WizardPrompter,
   current: SuperchatSection,
@@ -332,14 +352,17 @@ async function promptOptionals(
   });
   let whatsAppBusinessAccountId = current.whatsAppBusinessAccountId;
   if (wantsWaba) {
-    whatsAppBusinessAccountId = String(
+    const raw = String(
       await prompter.text({
-        message: "WhatsApp Business Account id",
-        placeholder: "waba_XXXX",
+        message:
+          "WhatsApp Business Account id (paste is fine — e.g. \"WABA ID: 465726..., Business ID: 394530...\")",
+        placeholder: "WABA ID: 4657... or waba_XXXX or bare digits",
         initialValue: current.whatsAppBusinessAccountId ?? undefined,
-        validate: required,
+        validate: (value: string) =>
+          extractWabaId(value) ? undefined : "No WABA id found in the input",
       }),
-    ).trim();
+    );
+    whatsAppBusinessAccountId = extractWabaId(raw)!;
   }
 
   return {
